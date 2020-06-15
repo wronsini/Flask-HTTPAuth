@@ -347,6 +347,54 @@ class HTTPTokenAuth(HTTPAuth):
             return self.verify_token_callback(token)
 
 
+class HTTPApiKeyAuth(HTTPAuth):
+    def __init__(self, scheme='APIKey', realm=None):
+        super(HTTPApiKeyAuth, self).__init__(scheme, realm)
+        self.verify_token_callback = None
+
+    def verify_apikey(self, f):
+        self.verify_token_callback = f
+        return f
+
+    def get_auth(self):
+        auth = request.authorization
+        if auth is None and self.scheme in request.headers:
+            try:
+                apikey = request.headers[self.scheme]
+                auth_type = 'apikey'
+                auth = Authorization(auth_type, {'apikey': apikey})
+            except ValueError as ex:
+                # The Authorization header is either empty or has no api key
+                pass
+
+        elif auth is None and self.scheme in request.args:
+            try:
+                apikey = request.args[self.scheme]
+                if len(apikey) > 0:
+                    auth_type = 'apikey'
+                    auth = Authorization(auth_type, {'apikey': apikey})
+            except ValueError:
+                # Not found 'apikey' in query string
+                pass
+
+        # if the auth type does not match, we act as if there is no auth
+        # this is better than failing directly, as it allows the callback
+        # to handle special cases, like supporting multiple auth types
+        if auth is not None and auth.type.lower() != self.scheme.lower():
+            auth = None
+
+        return auth
+
+    def authenticate(self, auth, stored_password):
+        if auth:
+            apikey = auth['apikey']
+        else:
+            apikey = ""
+        if self.verify_token_callback:
+            return self.verify_token_callback(apikey)
+        return False
+
+
 class MultiAuth(object):
     def __init__(self, main_auth, *args):
         self.main_auth = main_auth
